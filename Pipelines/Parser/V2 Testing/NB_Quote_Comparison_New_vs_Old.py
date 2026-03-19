@@ -42,7 +42,7 @@ from pyspark.sql.window import Window
 new_results = (
     spark.table("raw_us_corporates_dev.runz_parser_results")
     .filter(F.col("status").isin("SUCCESS", "PARTIAL_PARSE"))
-    .filter(F.col("added_timestamp").between(DATE_FROM, DATE_TO))
+    .filter(F.col("email_timestamp").between(DATE_FROM, DATE_TO))
     .select(
         F.col("email_id").alias("new_email_id"),
         F.col("rfc822msgid"),
@@ -56,15 +56,16 @@ new_results = (
 )
 
 # Parser results: old Core parser
+# Note: old table has no top-level quote_count — it's in the message JSON blob
 old_results = (
     spark.table("raw_us_corporates.runz_parser_results")
     .filter(F.col("status").isin("SUCCESS", "PARTIAL_PARSE"))
-    .filter(F.col("added_timestamp").between(DATE_FROM, DATE_TO))
+    .filter(F.col("convertedTimestamp").between(DATE_FROM, DATE_TO))
     .select(
         F.col("email_id").alias("old_email_id"),
         F.col("rfc822msgid"),
-        F.col("quote_count").alias("old_quote_count"),
         F.col("status").alias("old_parse_status"),
+        F.get_json_object(F.col("message"), "$.quoteCount").cast("int").alias("old_quote_count"),
     )
 )
 
