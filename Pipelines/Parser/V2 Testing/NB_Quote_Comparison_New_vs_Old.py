@@ -165,15 +165,16 @@ old_q = old_q.join(
 
 # COMMAND ----------
 
-# Standardize match key fields
+# Standardize match key fields — all as strings to avoid implicit numeric casts in join
 def std_key(df, email_id_col):
-    return df.withColumn(
-        "mty_std",
-        F.regexp_replace(F.lower(F.trim(F.col("mty"))), r"[^0-9/]", "")
-    ).withColumn(
-        "tkr_std", F.lower(F.trim(F.col("tkr")))
-    ).withColumn(
-        "side_std", F.lower(F.trim(F.col("side")))
+    return (
+        df
+        .withColumn("mty_std",  F.regexp_replace(F.lower(F.trim(F.col("mty"))), r"[^0-9/]", ""))
+        .withColumn("tkr_std",  F.lower(F.trim(F.col("tkr"))))
+        .withColumn("side_std", F.lower(F.trim(F.col("side"))))
+        # Format cpn as string rounded to 4dp so "5.5" == "5.5000" both become "5.5000"
+        # Non-numeric cpn values (bad data) become NULL and won't match — safe to drop
+        .withColumn("cpn_std",  F.format_string("%.4f", F.expr("try_cast(`cpn` as double)")))
     )
 
 new_keyed = std_key(new_q, "new_email_id")
@@ -184,11 +185,11 @@ matched = (
     new_keyed
     .join(
         old_keyed.select(
-            "rfc822msgid", "side_std", "tkr_std", "cpn", "mty_std",
+            "rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std",
             "old_price", "old_spread", "old_yield", "old_qty",
             "old_cusip", "old_isin",
         ),
-        on=["rfc822msgid", "side_std", "tkr_std", "cpn", "mty_std"],
+        on=["rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std"],
         how="full_outer",
     )
 )
