@@ -92,18 +92,22 @@ old_quotes_raw = spark.table("raw_us_corporates.pretrade_runz_quote_norm")
 # COMMAND ----------
 
 # Normalize new quotes
+def _dbl(col_name):
+    """try_cast to double — returns NULL instead of throwing on bad values like 'Float'."""
+    return F.expr(f"try_cast(`{col_name}` as double)")
+
 new_quotes = (
     new_quotes_raw
     .select(
         F.col("email_id").alias("new_email_id"),
         F.col("side"),
         F.col("tkr"),
-        F.col("cpn").cast("double"),
+        _dbl("cpn").alias("cpn"),
         F.col("mty"),
-        F.col("price").cast("double").alias("new_price"),
-        F.col("spread").cast("double").alias("new_spread"),
-        F.col("yield").cast("double").alias("new_yield"),
-        F.col("quantity").cast("double").alias("new_qty"),
+        _dbl("price").alias("new_price"),
+        _dbl("spread").alias("new_spread"),
+        _dbl("yield").alias("new_yield"),
+        _dbl("quantity").alias("new_qty"),
         F.col("cusip").alias("new_cusip"),
         F.col("isin").alias("new_isin"),
     )
@@ -117,12 +121,12 @@ old_quotes = (
         F.col("email_id").alias("old_email_id"),
         F.col("side"),
         F.col("tkr"),
-        F.col("cpn").cast("double"),
+        _dbl("cpn").alias("cpn"),
         F.col("mty"),
-        F.col("price").cast("double").alias("old_price"),
-        F.col("spread").cast("double").alias("old_spread"),
-        F.col("yield").cast("double").alias("old_yield"),     # expected null in old
-        F.col("quantity").cast("double").alias("old_qty"),
+        _dbl("price").alias("old_price"),
+        _dbl("spread").alias("old_spread"),
+        _dbl("yield").alias("old_yield"),     # expected null in old
+        _dbl("quantity").alias("old_qty"),
         F.col("cusip").alias("old_cusip"),
         F.col("isin").alias("old_isin"),
     )
