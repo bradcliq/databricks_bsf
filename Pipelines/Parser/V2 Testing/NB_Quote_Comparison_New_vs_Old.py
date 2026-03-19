@@ -220,7 +220,7 @@ matched = (
     .withColumn("yield_new_only", F.col("new_yield").isNotNull() & F.col("old_yield").isNull())
     .withColumn(
         "any_field_mismatch",
-        F.col("match_class").equalTo("both") & (
+        (F.col("match_class") == "both") & (
             ~F.col("price_match") | ~F.col("spread_match") | ~F.col("qty_match")
         )
     )
