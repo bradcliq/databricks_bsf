@@ -38,7 +38,8 @@ INGEST_BUCKET = "use1-s3-bcq-prod-bcqemail-ingest"
 # Pull email S3 keys from your existing autoloader/catalog table
 # Adjust date range and LIMIT as needed
 
-# 10 emails per trader for any trader active on 19 Mar 2026
+# 20 emails per trader for any trader active on 19 Mar 2026 — all statuses
+# (no success filter: we want to evaluate failures too)
 # ROW_NUMBER() within each sender ensures balanced coverage across all traders
 test_emails_df = spark.sql("""
     WITH ranked AS (
@@ -47,21 +48,22 @@ test_emails_df = spark.sql("""
             email_timestamp,
             get_json_object(message, '$.mailTrader') as from_email,
             get_json_object(message, '$.quoteType') as format,
+            status,
             ROW_NUMBER() OVER (
                 PARTITION BY get_json_object(message, '$.mailTrader')
                 ORDER BY email_timestamp DESC
             ) as rn
         FROM raw_us_corporates.runz_parser_results
-        WHERE status = 'SUCCESS'
-        AND email_timestamp LIKE '%19 Mar 2026%'
+        WHERE email_timestamp LIKE '%19 Mar 2026%'
     )
-    SELECT s3_key, email_timestamp, from_email, format
+    SELECT s3_key, email_timestamp, from_email, format, status
     FROM ranked
-    WHERE rn <= 10
+    WHERE rn <= 20
     ORDER BY from_email, email_timestamp DESC
 """)
 
 print(f"Found {test_emails_df.count()} test emails across {test_emails_df.select('from_email').distinct().count()} traders")
+display(test_emails_df.groupBy("status").count().orderBy("status"))
 display(test_emails_df)
 
 # COMMAND ----------
