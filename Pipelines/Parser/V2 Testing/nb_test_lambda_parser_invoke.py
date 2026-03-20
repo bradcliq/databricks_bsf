@@ -38,32 +38,53 @@ INGEST_BUCKET = "use1-s3-bcq-prod-bcqemail-ingest"
 # Pull email S3 keys from your existing autoloader/catalog table
 # Adjust date range and LIMIT as needed
 
-# 20 emails per trader for any trader active on 19 Mar 2026 — all statuses
-# (no success filter: we want to evaluate failures too)
-# ROW_NUMBER() within each sender ensures balanced coverage across all traders
+# 20 emails per trader for any trader active on 19 Mar 2026 — all statuses,
+# both HTML-table dealers (runz_parser_results) and JPM space-delimited
+# (sp_runz_parser_results). UNIONed before ranking so each trader gets at
+# most 20 across both sources.
 test_emails_df = spark.sql("""
-    WITH ranked AS (
+    WITH combined AS (
+        -- Standard HTML-table dealers
         SELECT
-            replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') as s3_key,
+            replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
             email_timestamp,
-            get_json_object(message, '$.mailTrader') as from_email,
-            get_json_object(message, '$.quoteType') as format,
+            get_json_object(message, '$.mailTrader')                        AS from_email,
+            get_json_object(message, '$.quoteType')                         AS format,
             status,
-            ROW_NUMBER() OVER (
-                PARTITION BY get_json_object(message, '$.mailTrader')
-                ORDER BY email_timestamp DESC
-            ) as rn
+            'html'                                                          AS source_table
         FROM raw_us_corporates.runz_parser_results
         WHERE email_timestamp LIKE '%19 Mar 2026%'
+
+        UNION ALL
+
+        -- JPM space-delimited parser
+        SELECT
+            replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
+            email_timestamp,
+            from_email,
+            get_json_object(message, '$.quoteType')                         AS format,
+            status,
+            'jpm'                                                           AS source_table
+        FROM raw_us_corporates.sp_runz_parser_results
+        WHERE email_timestamp LIKE '%19 Mar 2026%'
+    ),
+    ranked AS (
+        SELECT
+            s3_key, email_timestamp, from_email, format, status, source_table,
+            ROW_NUMBER() OVER (
+                PARTITION BY from_email
+                ORDER BY email_timestamp DESC
+            ) AS rn
+        FROM combined
     )
-    SELECT s3_key, email_timestamp, from_email, format, status
+    SELECT s3_key, email_timestamp, from_email, format, status, source_table
     FROM ranked
     WHERE rn <= 20
     ORDER BY from_email, email_timestamp DESC
 """)
 
 print(f"Found {test_emails_df.count()} test emails across {test_emails_df.select('from_email').distinct().count()} traders")
-display(test_emails_df.groupBy("status").count().orderBy("status"))
+display(test_emails_df.groupBy("source_table", "status").count().orderBy("source_table", "status"))
 display(test_emails_df)
 
 # COMMAND ----------
