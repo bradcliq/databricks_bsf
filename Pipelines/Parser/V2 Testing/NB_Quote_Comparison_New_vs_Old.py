@@ -180,16 +180,26 @@ def std_key(df, email_id_col):
 new_keyed = std_key(new_q, "new_email_id")
 old_keyed = std_key(old_q, "old_email_id")
 
-# Full outer join on match key to detect new-only / old-only / matched
+# Add row_number within each match key group so that when the same bond
+# appears multiple times in one email (two lots at different prices), each
+# new row is paired with exactly one old row instead of cross-matching.
+_match_key = ["rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std"]
+_w_new = Window.partitionBy(*_match_key).orderBy("new_price", "new_spread")
+_w_old = Window.partitionBy(*_match_key).orderBy("old_price", "old_spread")
+
+new_keyed = new_keyed.withColumn("_rn", F.row_number().over(_w_new))
+old_keyed = old_keyed.withColumn("_rn", F.row_number().over(_w_old))
+
+# Full outer join — include _rn so duplicate bond rows join 1:1
 matched = (
     new_keyed
     .join(
         old_keyed.select(
-            "rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std",
+            "rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std", "_rn",
             "old_price", "old_spread", "old_yield", "old_qty",
             "old_cusip", "old_isin",
         ),
-        on=["rfc822msgid", "side_std", "tkr_std", "cpn_std", "mty_std"],
+        on=_match_key + ["_rn"],
         how="full_outer",
     )
 )
