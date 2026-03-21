@@ -17,8 +17,8 @@
 # COMMAND ----------
 
 # Date range to compare — adjust as needed
-DATE_FROM = "2025-01-01"
-DATE_TO   = "2025-12-31"
+DATE_FROM = "2026-01-01"
+DATE_TO   = "2026-12-31"
 
 # Max rows per sender in the mismatch detail section (keep output manageable)
 MAX_DETAIL_ROWS = 200
@@ -55,19 +55,43 @@ new_results = (
     )
 )
 
-# Parser results: old Core parser
-# Note: old table has no top-level quote_count — it's in the message JSON blob
-old_results = (
+# Parser results: old Core parser — UNION HTML-table and JPM space-delimited tables
+# Both tables share the same schema; JPM uses email_timestamp (string) while
+# the HTML table additionally has a convertedTimestamp (datetime) column.
+# We parse email_timestamp for both so the date filter is consistent.
+_old_html = (
     spark.table("raw_us_corporates.runz_parser_results")
     .filter(F.col("status").isin("SUCCESS", "PARTIAL_PARSE"))
-    .filter(F.col("convertedTimestamp").between(DATE_FROM, DATE_TO))
+    .filter(
+        F.to_timestamp(F.col("email_timestamp"), "d MMM yyyy HH:mm:ss Z")
+        .between(DATE_FROM, DATE_TO)
+    )
     .select(
         F.col("email_id").alias("old_email_id"),
         F.col("rfc822msgid"),
         F.col("status").alias("old_parse_status"),
         F.get_json_object(F.col("message"), "$.quoteCount").cast("int").alias("old_quote_count"),
+        F.lit("html").alias("old_source"),
     )
 )
+
+_old_jpm = (
+    spark.table("raw_us_corporates.sp_runz_parser_results")
+    .filter(F.col("status").isin("SUCCESS", "PARTIAL_PARSE"))
+    .filter(
+        F.to_timestamp(F.col("email_timestamp"), "d MMM yyyy HH:mm:ss Z")
+        .between(DATE_FROM, DATE_TO)
+    )
+    .select(
+        F.col("email_id").alias("old_email_id"),
+        F.col("rfc822msgid"),
+        F.col("status").alias("old_parse_status"),
+        F.get_json_object(F.col("message"), "$.quoteCount").cast("int").alias("old_quote_count"),
+        F.lit("jpm").alias("old_source"),
+    )
+)
+
+old_results = _old_html.unionByName(_old_jpm)
 
 # Join on rfc822msgid — inner join keeps only emails processed by both parsers
 email_pairs = (
@@ -146,9 +170,9 @@ email_ids_old = email_pairs.select("old_email_id").distinct()
 new_q = new_quotes.join(email_ids_new, on="new_email_id", how="inner")
 old_q = old_quotes.join(email_ids_old, on="old_email_id", how="inner")
 
-# Bring in from_email / subject for grouping
+# Bring in from_email / subject / old_source for grouping
 new_q = new_q.join(
-    email_pairs.select("new_email_id", "from_email", "subject", "rfc822msgid"),
+    email_pairs.select("new_email_id", "from_email", "subject", "rfc822msgid", "old_source"),
     on="new_email_id", how="left"
 )
 old_q = old_q.join(
@@ -250,7 +274,7 @@ matched = (
 
 summary = (
     matched
-    .groupBy("rfc822msgid", "from_email", "subject")
+    .groupBy("rfc822msgid", "from_email", "subject", "old_source")
     .agg(
         F.count(F.when(F.col("match_class") == "both",          1)).alias("matched_quotes"),
         F.count(F.when(F.col("match_class") == "new_only",      1)).alias("new_only_quotes"),

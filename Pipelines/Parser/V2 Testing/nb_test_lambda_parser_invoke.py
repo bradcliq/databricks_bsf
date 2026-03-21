@@ -164,6 +164,7 @@ def invoke_lambda(s3_key):
                 "header_source": r.get("header_source", ""),
                 "quote_count": r.get("quote_count", 0),
                 "parsed_header": r.get("parsed_header", ""),
+                "failure_class": r.get("failure_class", ""),
                 "error": r.get("error", ""),
             }
         else:
@@ -282,26 +283,40 @@ display(results_spark)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Compare quote counts between Lambda and production parser
-# MAGIC -- Adjust table name if your prod results table is different
-# MAGIC SELECT 
+# MAGIC -- Compare quote counts between Lambda and production parser (both HTML and JPM tables)
+# MAGIC SELECT
 # MAGIC     l.s3_key,
-# MAGIC     l.from_email as lambda_sender,
-# MAGIC     l.quote_count as lambda_quotes,
+# MAGIC     l.from_email                               AS lambda_sender,
+# MAGIC     l.status                                   AS lambda_status,
+# MAGIC     l.quote_count                              AS lambda_quotes,
 # MAGIC     l.header_source,
-# MAGIC     l.format as lambda_format,
-# MAGIC     p.quote_count as prod_quotes,
-# MAGIC     l.quote_count - p.quote_count as diff
+# MAGIC     l.format                                   AS lambda_format,
+# MAGIC     l.failure_class,
+# MAGIC     p.quote_count                              AS prod_quotes,
+# MAGIC     p.source_table                             AS prod_source,
+# MAGIC     l.quote_count - coalesce(p.quote_count, 0) AS diff
 # MAGIC FROM lambda_test_results l
 # MAGIC LEFT JOIN (
-# MAGIC     SELECT 
-# MAGIC         replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') as s3_key,
-# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT) as quote_count
+# MAGIC     -- HTML-table dealers
+# MAGIC     SELECT
+# MAGIC         replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
+# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT)           AS quote_count,
+# MAGIC         'html'                                                           AS source_table
 # MAGIC     FROM raw_us_corporates.runz_parser_results
-# MAGIC     WHERE status = 'SUCCESS'
+# MAGIC     WHERE status IN ('SUCCESS', 'PARTIAL_PARSE')
+# MAGIC
+# MAGIC     UNION ALL
+# MAGIC
+# MAGIC     -- JPM space-delimited parser
+# MAGIC     SELECT
+# MAGIC         replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
+# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT)           AS quote_count,
+# MAGIC         'jpm'                                                            AS source_table
+# MAGIC     FROM raw_us_corporates.sp_runz_parser_results
+# MAGIC     WHERE status IN ('SUCCESS', 'PARTIAL_PARSE')
 # MAGIC ) p ON l.s3_key = p.s3_key
-# MAGIC WHERE l.status = 'SUCCESS'
-# MAGIC ORDER BY diff DESC
+# MAGIC WHERE l.status IN ('SUCCESS', 'PARTIAL_PARSE', 'FAILURE')
+# MAGIC ORDER BY diff DESC NULLS LAST
 
 # COMMAND ----------
 
