@@ -300,7 +300,7 @@ display(results_spark)
 # MAGIC     -- HTML-table dealers
 # MAGIC     SELECT
 # MAGIC         replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
-# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT)           AS quote_count,
+# MAGIC         CAST(get_json_object(message, '$.actualCt') AS INT)           AS quote_count,
 # MAGIC         'html'                                                           AS source_table
 # MAGIC     FROM raw_us_corporates.runz_parser_results
 # MAGIC     WHERE status IN ('SUCCESS', 'PARTIAL_PARSE')
@@ -310,7 +310,7 @@ display(results_spark)
 # MAGIC     -- JPM space-delimited parser
 # MAGIC     SELECT
 # MAGIC         replace(file_path,'s3://use1-s3-bcq-prod-bcqemail-ingest/','') AS s3_key,
-# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT)           AS quote_count,
+# MAGIC         CAST(get_json_object(message, '$.actualCt') AS INT)           AS quote_count,
 # MAGIC         'jpm'                                                            AS source_table
 # MAGIC     FROM raw_us_corporates.sp_runz_parser_results
 # MAGIC     WHERE status IN ('SUCCESS', 'PARTIAL_PARSE')
@@ -616,7 +616,7 @@ print(f"Catalog autoloader writing to {DEV_SCHEMA}.runz_email_catalog")
 # MAGIC LEFT JOIN (
 # MAGIC     SELECT 
 # MAGIC         s3_key, 
-# MAGIC         CAST(get_json_object(message, '$.quoteCount') AS INT) as p_count
+# MAGIC         CAST(get_json_object(message, '$.actualCt') AS INT) as p_count
 # MAGIC     FROM raw_us_corporates.runz_parser_results
 # MAGIC     WHERE status = 'SUCCESS'
 # MAGIC ) p ON d.s3_key = p.s3_key

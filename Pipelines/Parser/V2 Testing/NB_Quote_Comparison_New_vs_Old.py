@@ -70,7 +70,7 @@ _old_html = (
         F.col("email_id").alias("old_email_id"),
         F.col("rfc822msgid"),
         F.col("status").alias("old_parse_status"),
-        F.get_json_object(F.col("message"), "$.quoteCount").cast("int").alias("old_quote_count"),
+        F.get_json_object(F.col("message"), "$.actualCt").cast("int").alias("old_quote_count"),
         F.lit("html").alias("old_source"),
     )
 )
@@ -86,7 +86,7 @@ _old_jpm = (
         F.col("email_id").alias("old_email_id"),
         F.col("rfc822msgid"),
         F.col("status").alias("old_parse_status"),
-        F.get_json_object(F.col("message"), "$.quoteCount").cast("int").alias("old_quote_count"),
+        F.get_json_object(F.col("message"), "$.actualCt").cast("int").alias("old_quote_count"),
         F.lit("jpm").alias("old_source"),
     )
 )
